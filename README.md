@@ -44,6 +44,7 @@ make
 ```txt
 chinadns DBFILE TO... {
     fallback TO...
+    reload DURATION
 }
 ```
 
@@ -51,6 +52,8 @@ chinadns DBFILE TO... {
 * **TO...** are the main destination endpoints to forward to. We usually add a dns server inside China to this list.
 * `fallback` specifies the fallback upstream servers.
   * `TO...` are the fallback destination endpoints to forward to. We usually add a dns server outside China to this list.
+* `reload` change the period between each database file reload. A time of zero seconds disables the feature.
+  Examples of valid durations: "300ms", "1.5h" or "2h45m". See Go's [time](https://godoc.org/time) package. Default is 30s.
 
 ## Examples
 
