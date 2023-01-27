@@ -6,6 +6,7 @@ import (
 	"github.com/coredns/coredns/plugin/forward"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/plugin/pkg/nonwriter"
+	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 	"github.com/oschwald/maxminddb-golang"
 	"net"
@@ -40,6 +41,8 @@ type ChinaDNS struct {
 	cnFwd *forward.Forward
 	fbFwd *forward.Forward
 	geoIP *maxminddb.Reader
+	// A list of domains to bypass fallback upstreams
+	ignored []string
 	// mtime and size are only read and modified by a single goroutine
 	mtime time.Time
 	size  int64
@@ -57,6 +60,10 @@ func New() *ChinaDNS {
 }
 
 func (c *ChinaDNS) ServeDNS(ctx context.Context, writer dns.ResponseWriter, msg *dns.Msg) (int, error) {
+	state := request.Request{W: writer, Req: msg}
+	if c.bypass(state.Name()) {
+		return c.cnFwd.ServeDNS(ctx, writer, msg)
+	}
 	cnReply := make(chan *dnsReply, 1)
 	fbReply := make(chan *dnsReply, 1)
 	msgCopy := *msg
@@ -108,6 +115,15 @@ func (c *ChinaDNS) isChina(r *dns.Msg) bool {
 			return false
 		}
 		if record.Country.ISOCode == "CN" {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *ChinaDNS) bypass(name string) bool {
+	for _, ignore := range c.ignored {
+		if plugin.Name(ignore).Matches(name) {
 			return true
 		}
 	}

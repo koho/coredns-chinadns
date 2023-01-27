@@ -45,6 +45,7 @@ make
 chinadns DBFILE TO... {
     fallback TO...
     reload DURATION
+    except IGNORED_NAMES...
 }
 ```
 
@@ -54,6 +55,8 @@ chinadns DBFILE TO... {
   * `TO...` are the fallback destination endpoints to forward to. We usually add a dns server outside China to this list.
 * `reload` change the period between each database file reload. A time of zero seconds disables the feature.
   Examples of valid durations: "300ms", "1.5h" or "2h45m". See Go's [time](https://godoc.org/time) package. Default is 30s.
+* **IGNORED_NAMES** in `except` is a space-separated list of domains to exclude from forwarding to fallback upstreams.
+  Requests that match one of these names will be only forwarded to main upstreams.
 
 ## Examples
 

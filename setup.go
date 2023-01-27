@@ -78,6 +78,14 @@ func parseChinaDNS(c *caddy.Controller) (*ChinaDNS, error) {
 
 func parseBlock(c *caddy.Controller, cd *ChinaDNS) error {
 	switch c.Val() {
+	case "except":
+		ignore := c.RemainingArgs()
+		if len(ignore) == 0 {
+			return c.ArgErr()
+		}
+		for i := 0; i < len(ignore); i++ {
+			cd.ignored = append(cd.ignored, plugin.Host(ignore[i]).NormalizeExact()...)
+		}
 	case "fallback":
 		proxies, err := parseProxy(c, c.RemainingArgs())
 		if err != nil {
