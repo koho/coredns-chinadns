@@ -11,6 +11,7 @@ import (
 	"github.com/oschwald/maxminddb-golang"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -122,6 +123,9 @@ func (c *ChinaDNS) isChina(r *dns.Msg) bool {
 }
 
 func (c *ChinaDNS) bypass(name string) bool {
+	if strings.HasSuffix(name, ".cn.") {
+		return true
+	}
 	for _, ignore := range c.ignored {
 		if plugin.Name(ignore).Matches(name) {
 			return true
