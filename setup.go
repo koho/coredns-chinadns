@@ -140,10 +140,10 @@ func parseProxy(c *caddy.Controller, to []string) ([]*forward.Proxy, error) {
 }
 
 func periodicDBUpdate(cd *ChinaDNS) chan bool {
-	parseChan := make(chan bool)
+	updateChan := make(chan bool)
 
 	if cd.opts.reload == 0 {
-		return parseChan
+		return updateChan
 	}
 
 	go func() {
@@ -151,12 +151,12 @@ func periodicDBUpdate(cd *ChinaDNS) chan bool {
 		defer ticker.Stop()
 		for {
 			select {
-			case <-parseChan:
+			case <-updateChan:
 				return
 			case <-ticker.C:
 				cd.readDB()
 			}
 		}
 	}()
-	return parseChan
+	return updateChan
 }
