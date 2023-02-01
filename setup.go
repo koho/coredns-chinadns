@@ -3,13 +3,14 @@ package chinadns
 import (
 	"crypto/tls"
 	"fmt"
+	"time"
+
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/forward"
 	"github.com/coredns/coredns/plugin/pkg/parse"
 	"github.com/coredns/coredns/plugin/pkg/transport"
-	"time"
 )
 
 func init() { plugin.Register("chinadns", setup) }
