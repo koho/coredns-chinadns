@@ -2,18 +2,21 @@ package chinadns
 
 import (
 	"context"
-	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/forward"
-	clog "github.com/coredns/coredns/plugin/pkg/log"
-	"github.com/coredns/coredns/plugin/pkg/nonwriter"
-	"github.com/coredns/coredns/request"
-	"github.com/miekg/dns"
-	"github.com/oschwald/maxminddb-golang"
+	"io"
 	"net"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/forward"
+	clog "github.com/coredns/coredns/plugin/pkg/log"
+	"github.com/coredns/coredns/plugin/pkg/nonwriter"
+	"github.com/coredns/coredns/request"
+
+	"github.com/miekg/dns"
+	"github.com/oschwald/maxminddb-golang"
 )
 
 var log = clog.NewWithPlugin("chinadns")
@@ -25,9 +28,9 @@ type dnsReply struct {
 }
 
 type options struct {
-	// The path of GeoIP database
+	// The path of GeoIP database.
 	path string
-	// The time between two reload of the db file
+	// The time between two reload of the db file.
 	reload time.Duration
 }
 
@@ -42,9 +45,9 @@ type ChinaDNS struct {
 	cnFwd *forward.Forward
 	fbFwd *forward.Forward
 	geoIP *maxminddb.Reader
-	// A list of domains to bypass fallback upstreams
+	// A list of domains to bypass fallback upstreams.
 	ignored []string
-	// mtime and size are only read and modified by a single goroutine
+	// mtime and size are only read and modified by a single goroutine.
 	mtime time.Time
 	size  int64
 	opts  *options
@@ -139,8 +142,8 @@ func (c *ChinaDNS) readDB() error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	stat, err := file.Stat()
-	file.Close()
 	if err != nil {
 		return err
 	}
@@ -151,7 +154,11 @@ func (c *ChinaDNS) readDB() error {
 	if c.mtime.Equal(stat.ModTime()) && size == stat.Size() {
 		return nil
 	}
-	geoIP, err := maxminddb.Open(c.opts.path)
+	geoBytes, err := io.ReadAll(file)
+	if err != nil {
+		return err
+	}
+	geoIP, err := maxminddb.FromBytes(geoBytes)
 	if err != nil {
 		return err
 	}
