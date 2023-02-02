@@ -11,6 +11,8 @@ import (
 	"github.com/coredns/coredns/plugin/forward"
 	"github.com/coredns/coredns/plugin/pkg/parse"
 	"github.com/coredns/coredns/plugin/pkg/transport"
+
+	"github.com/miekg/dns"
 )
 
 func init() { plugin.Register("chinadns", setup) }
@@ -21,7 +23,6 @@ func setup(c *caddy.Controller) error {
 		return err
 	}
 	cnProxies := c.Get("cn").([]*forward.Proxy)
-	fbProxies := c.Get("fb").([]*forward.Proxy)
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
 		cd.Next = next
 		return cd
@@ -29,15 +30,11 @@ func setup(c *caddy.Controller) error {
 	updateChan := periodicDBUpdate(cd)
 	c.OnStartup(func() error {
 		for _, proxy := range cnProxies {
-			cd.cnFwd.SetProxy(proxy)
-		}
-		for _, proxy := range fbProxies {
-			cd.fbFwd.SetProxy(proxy)
+			cd.fwd.SetProxy(proxy)
 		}
 		return nil
 	})
-	c.OnShutdown(cd.cnFwd.OnShutdown)
-	c.OnShutdown(cd.fbFwd.OnShutdown)
+	c.OnShutdown(cd.fwd.OnShutdown)
 	c.OnShutdown(func() error {
 		close(updateChan)
 		return nil
@@ -85,14 +82,8 @@ func parseBlock(c *caddy.Controller, cd *ChinaDNS) error {
 			return c.ArgErr()
 		}
 		for i := 0; i < len(ignore); i++ {
-			cd.ignored = append(cd.ignored, plugin.Host(ignore[i]).NormalizeExact()...)
+			cd.opts.ignored = append(cd.opts.ignored, plugin.Host(ignore[i]).NormalizeExact()...)
 		}
-	case "fallback":
-		proxies, err := parseProxy(c, c.RemainingArgs())
-		if err != nil {
-			return err
-		}
-		c.Set("fb", proxies)
 	case "reload":
 		remaining := c.RemainingArgs()
 		if len(remaining) != 1 {
@@ -106,6 +97,15 @@ func parseBlock(c *caddy.Controller, cd *ChinaDNS) error {
 			return c.Errf("invalid negative duration for reload '%s'", remaining[0])
 		}
 		cd.opts.reload = reload
+	case "block":
+		if !c.NextArg() {
+			return c.ArgErr()
+		}
+		qtype, ok := dns.StringToType[c.Val()]
+		if !ok {
+			return c.Errf("invalid RR class %s", c.Val())
+		}
+		cd.opts.block = qtype
 	default:
 		return c.Errf("unknown property '%s'", c.Val())
 	}

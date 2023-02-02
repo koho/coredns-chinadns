@@ -30,8 +30,12 @@ type dnsReply struct {
 type options struct {
 	// The path of GeoIP database.
 	path string
+	// A list of domains to bypass fallback upstreams.
+	ignored []string
 	// The time between two reload of the db file.
 	reload time.Duration
+	// Prevent from passing a specific query type to next plugin.
+	block uint16
 }
 
 func newOptions() *options {
@@ -42,11 +46,8 @@ func newOptions() *options {
 
 type ChinaDNS struct {
 	sync.RWMutex
-	cnFwd *forward.Forward
-	fbFwd *forward.Forward
+	fwd   *forward.Forward
 	geoIP *maxminddb.Reader
-	// A list of domains to bypass fallback upstreams.
-	ignored []string
 	// mtime and size are only read and modified by a single goroutine.
 	mtime time.Time
 	size  int64
@@ -56,31 +57,39 @@ type ChinaDNS struct {
 
 func New() *ChinaDNS {
 	return &ChinaDNS{
-		cnFwd: forward.New(),
-		fbFwd: forward.New(),
-		opts:  newOptions(),
-		Next:  nil,
+		fwd:  forward.New(),
+		opts: newOptions(),
+		Next: nil,
 	}
 }
 
 func (c *ChinaDNS) ServeDNS(ctx context.Context, writer dns.ResponseWriter, msg *dns.Msg) (int, error) {
 	state := request.Request{W: writer, Req: msg}
 	if c.bypass(state.Name()) {
-		return c.cnFwd.ServeDNS(ctx, writer, msg)
+		return c.fwd.ServeDNS(ctx, writer, msg)
 	}
 	cnReply := make(chan *dnsReply, 1)
 	fbReply := make(chan *dnsReply, 1)
 	msgCopy := *msg
+	// Forward to main upstreams.
 	go func() {
 		resp := nonwriter.New(writer)
-		code, err := c.cnFwd.ServeDNS(ctx, resp, msg)
+		code, err := c.fwd.ServeDNS(ctx, resp, msg)
 		cnReply <- &dnsReply{resp.Msg, code, err}
 	}()
-	go func() {
-		resp := nonwriter.New(writer)
-		code, err := c.fbFwd.ServeDNS(ctx, resp, &msgCopy)
-		fbReply <- &dnsReply{resp.Msg, code, err}
-	}()
+	// Prevent from passing the blocked query type to fallback upstreams.
+	if c.opts.block > 0 && state.QType() == c.opts.block && state.QClass() == dns.ClassINET {
+		r := new(dns.Msg)
+		r.SetReply(&msgCopy)
+		r.Authoritative = true
+		fbReply <- &dnsReply{r, 0, nil}
+	} else {
+		go func() {
+			resp := nonwriter.New(writer)
+			code, err := plugin.NextOrFailure(c.Name(), c.Next, ctx, resp, &msgCopy)
+			fbReply <- &dnsReply{resp.Msg, code, err}
+		}()
+	}
 	// First of all, we must wait for a reply of china dns.
 	cnMsg := <-cnReply
 	if cnMsg.reply != nil && len(cnMsg.reply.Answer) > 0 && c.isChina(cnMsg.reply) {
@@ -129,7 +138,7 @@ func (c *ChinaDNS) bypass(name string) bool {
 	if strings.HasSuffix(name, ".cn.") {
 		return true
 	}
-	for _, ignore := range c.ignored {
+	for _, ignore := range c.opts.ignored {
 		if plugin.Name(ignore).Matches(name) {
 			return true
 		}
