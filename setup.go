@@ -8,6 +8,7 @@ import (
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/dnstap"
 	"github.com/coredns/coredns/plugin/forward"
 	"github.com/coredns/coredns/plugin/pkg/parse"
 	"github.com/coredns/coredns/plugin/pkg/transport"
@@ -31,6 +32,12 @@ func setup(c *caddy.Controller) error {
 	c.OnStartup(func() error {
 		for _, proxy := range cnProxies {
 			cd.fwd.SetProxy(proxy)
+		}
+		return nil
+	})
+	c.OnStartup(func() error {
+		if taph := dnsserver.GetConfig(c).Handler("dnstap"); taph != nil {
+			cd.fwd.SetTapPlugin(taph.(*dnstap.Dnstap))
 		}
 		return nil
 	})
