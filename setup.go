@@ -9,8 +9,8 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/dnstap"
-	"github.com/coredns/coredns/plugin/forward"
 	"github.com/coredns/coredns/plugin/pkg/parse"
+	"github.com/coredns/coredns/plugin/pkg/proxy"
 	"github.com/coredns/coredns/plugin/pkg/transport"
 
 	"github.com/miekg/dns"
@@ -23,15 +23,15 @@ func setup(c *caddy.Controller) error {
 	if err != nil {
 		return err
 	}
-	cnProxies := c.Get("cn").([]*forward.Proxy)
+	cnProxies := c.Get("cn").([]*proxy.Proxy)
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
 		cd.Next = next
 		return cd
 	})
 	updateChan := periodicDBUpdate(cd)
 	c.OnStartup(func() error {
-		for _, proxy := range cnProxies {
-			cd.fwd.SetProxy(proxy)
+		for _, pxy := range cnProxies {
+			cd.fwd.SetProxy(pxy)
 		}
 		return nil
 	})
@@ -119,7 +119,7 @@ func parseBlock(c *caddy.Controller, cd *ChinaDNS) error {
 	return nil
 }
 
-func parseProxy(c *caddy.Controller, to []string) ([]*forward.Proxy, error) {
+func parseProxy(c *caddy.Controller, to []string) ([]*proxy.Proxy, error) {
 	if len(to) == 0 {
 		return nil, c.ArgErr()
 	}
@@ -127,7 +127,7 @@ func parseProxy(c *caddy.Controller, to []string) ([]*forward.Proxy, error) {
 	if err != nil {
 		return nil, err
 	}
-	proxies := make([]*forward.Proxy, 0)
+	proxies := make([]*proxy.Proxy, 0)
 	allowedTrans := map[string]bool{"dns": true, "tls": true}
 	tlsConfig := &tls.Config{ClientSessionCache: tls.NewLRUClientSessionCache(len(toHosts))}
 	for _, host := range toHosts {
@@ -136,7 +136,7 @@ func parseProxy(c *caddy.Controller, to []string) ([]*forward.Proxy, error) {
 		if !allowedTrans[trans] {
 			return nil, fmt.Errorf("'%s' is not supported as a destination protocol in chinadns: %s", trans, host)
 		}
-		p := forward.NewProxy(h, trans)
+		p := proxy.NewProxy("forward", h, trans)
 		if trans == transport.TLS {
 			p.SetTLSConfig(tlsConfig)
 		}
