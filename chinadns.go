@@ -109,12 +109,16 @@ func (c *ChinaDNS) isChina(r *dns.Msg) bool {
 	c.RLock()
 	defer c.RUnlock()
 	for _, ans := range r.Answer {
-		var ip net.IP
+		ips := make([]net.IP, 0, 1)
 		switch ans.Header().Rrtype {
 		case dns.TypeA:
-			ip = ans.(*dns.A).A
+			ips = append(ips, ans.(*dns.A).A)
 		case dns.TypeAAAA:
-			ip = ans.(*dns.AAAA).AAAA
+			ips = append(ips, ans.(*dns.AAAA).AAAA)
+		case dns.TypeHTTPS:
+			ips = c.extractSVCBIPs(ans.(*dns.HTTPS).Value)
+		case dns.TypeSVCB:
+			ips = c.extractSVCBIPs(ans.(*dns.SVCB).Value)
 		default:
 			continue
 		}
@@ -123,15 +127,35 @@ func (c *ChinaDNS) isChina(r *dns.Msg) bool {
 				ISOCode string `maxminddb:"iso_code"`
 			} `maxminddb:"country"`
 		}
-		err := c.geoIP.Lookup(ip, &record)
-		if err != nil {
-			return false
-		}
-		if record.Country.ISOCode == "CN" {
-			return true
+		for _, ip := range ips {
+			if err := c.geoIP.Lookup(ip, &record); err != nil {
+				return false
+			}
+			if record.Country.ISOCode == "CN" {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func (c *ChinaDNS) extractSVCBIPs(values []dns.SVCBKeyValue) []net.IP {
+	var ips []net.IP
+	var v4, v6 bool
+	for _, v := range values {
+		switch v := v.(type) {
+		case *dns.SVCBIPv4Hint:
+			ips = append(ips, v.Hint...)
+			v4 = true
+		case *dns.SVCBIPv6Hint:
+			ips = append(ips, v.Hint...)
+			v6 = true
+		}
+		if v4 && v6 {
+			break
+		}
+	}
+	return ips
 }
 
 func (c *ChinaDNS) bypass(name string) bool {
